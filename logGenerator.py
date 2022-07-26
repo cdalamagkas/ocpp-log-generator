@@ -13,9 +13,13 @@ ONLINE_MODE = 1
 PCAP_FILES = ["pcaps/20220509-cpms-sample.pcap", "pcaps/cpms-1.pcap", "pcaps/cpms-2.pcap", "pcaps/cpms-new-edited.pcap"]
 LOG_FILENAME = str(int(datetime.now().timestamp())) + "_ocppLogs.json"
 
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO, datefmt='%Y-%m-%dT%H:%M:%S')
+FORMAT = '%(asctime)s %(message)s'
+DATEFMT = '%Y-%m-%dT%H:%M:%S'
+formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
+logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
 LOGGER = logging.getLogger("Rotating Log")
-handler = RotatingFileHandler(LOG_FILENAME, maxBytes=2000, backupCount=5)
+handler = RotatingFileHandler(LOG_FILENAME, maxBytes=15728640, backupCount=5)
+handler.setFormatter(formatter)
 LOGGER.addHandler(handler)
 
 
@@ -66,7 +70,7 @@ class FileSink(Sink):
         if msg == False or msg == 'False':
             print("False, skipping...")
         else:
-            LOGGER.info(result)
+            LOGGER.info(msg)
 
 
 if __name__ == "__main__":
@@ -79,7 +83,7 @@ if __name__ == "__main__":
         p.add(source)
         p.start()
         p.wait_and_stop()
-        
+
     else:
         for pcap in PCAP_FILES:
             packets = rdpcap(pcap)
