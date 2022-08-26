@@ -10,8 +10,8 @@ ONLINE_MODE = True
 # PCAP_FILES is needed only if operating in offline mode (i.e., ONLINE_MODE = False)
 PCAP_FILES = ["pcaps/20220509-cpms-sample.pcap", "pcaps/cpms-1.pcap", "pcaps/cpms-2.pcap", "pcaps/cpms-new-edited.pcap"]
 
-LOG_FILENAME = datetime.now.strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
-FORMAT = '%(asctime)s %(message)s'
+LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
+FORMAT = '%(asctime)s.%(msecs)03d %(message)s'
 DATEFMT = '%Y-%m-%dT%H:%M:%S'
 formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
 logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
@@ -25,10 +25,14 @@ def analysePacketOCPP(packet):
     try:
         payload = packet["IP"]["TCP"].payload.load
     except AttributeError:
-        print("Packet has no payload. Lets continue...")
+        #print("Packet has no payload. Lets continue...")
         return False
 
-    if payload[0] == 129 or payload[0] == 137 or payload[0] == 138:  # 129 corresponds to \x81 (opcode=text), 137 to \x89 (ping), 138 to \x8a (pong)
+    if payload[0] == 138:  # corresponds to \x8a (pong)
+        return  {"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "pong"} 
+    elif payload[0] == 137: # corresponds to \x89 (ping)
+        return  {"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "ping"}
+    elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text), 137 to \x89 (ping), 138 to \x8a (pong)
         unmasked = []
         if payload[1] & 128 == 128:  # Check if mask bit is set
             if (payload[1] & 127) == 126:
@@ -58,7 +62,7 @@ def analysePacketOCPP(packet):
                 n = 2
             unmasked = payload[n:]
             unmasked = unmasked.decode()
-        return unmasked
+        return {"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked}
     else:
         return False
 
@@ -66,9 +70,10 @@ def analysePacketOCPP(packet):
 class FileSink(Sink):
     def push(self, msg):
         if msg == False or msg == 'False':
-            print("False, skipping...")
+          return 
+          # print("False, skipping...")
         else:
-            LOGGER.info(msg)
+            LOGGER.info("IP_SRC=" + msg["src_ip"] + " " + "IP_DST=" + msg["dst_ip"] + " MSG=" + msg["msg"])
 
 
 if __name__ == "__main__":
