@@ -2,13 +2,13 @@ from scapy.all import *
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
-
+import json
 
 # Online means that the script listens to the interface to retrieve ocpp packets
-ONLINE_MODE = True
+ONLINE_MODE = False
 
 # PCAP_FILES is needed only if operating in offline mode (i.e., ONLINE_MODE = False)
-PCAP_FILES = ["pcaps/20220509-cpms-sample.pcap", "pcaps/cpms-1.pcap", "pcaps/cpms-2.pcap", "pcaps/cpms-new-edited.pcap"]
+PCAP_FILES = ["RemoteStartTransaction.pcap"]
 
 LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
 FORMAT = '%(asctime)s.%(msecs)03d %(message)s'
@@ -24,7 +24,7 @@ LOGGER.addHandler(handler)
 def analysePacketOCPP(packet):
     try:
         payload = packet["IP"]["TCP"].payload.load
-    except AttributeError:
+    except AttributeError or IndexError:
         #print("Packet has no payload. Lets continue...")
         return False
 
@@ -62,7 +62,9 @@ def analysePacketOCPP(packet):
                 n = 2
             unmasked = payload[n:]
             unmasked = unmasked.decode()
-        return {"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked}
+        
+        unmasked = json.loads(unmasked)
+        return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
     else:
         return False
 
@@ -73,11 +75,10 @@ class FileSink(Sink):
           return 
           # print("False, skipping...")
         else:
-            LOGGER.info("IP_SRC=" + msg["src_ip"] + " " + "IP_DST=" + msg["dst_ip"] + " MSG=" + msg["msg"])
-
+            LOGGER.info(msg)
+            # "IP_SRC=" + msg["src_ip"] + " " + "IP_DST=" + msg["dst_ip"] + " MSG=" + msg["msg"]
 
 if __name__ == "__main__":
-
     if ONLINE_MODE:
         source = SniffSource(filter="tcp")
         filesink = FileSink()
@@ -89,10 +90,11 @@ if __name__ == "__main__":
 
     else:
         for pcap in PCAP_FILES:
-            packets = rdpcap(pcap)
+            packets = rdpcap("./pcaps/" + pcap)
             for packet in packets:
-                result = analysePacketOCPP(packet)
-                if not result:
-                    continue
-                else:
-                    LOGGER.info(result)
+                if packet.haslayer("TCP"):
+                    result = analysePacketOCPP(packet)
+                    if not result:
+                        continue
+                    else:
+                        LOGGER.info(result)
