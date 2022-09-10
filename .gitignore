@@ -1,2 +1,3 @@
 venv
-pcaps
+pcaps/*
+output-logs/*
