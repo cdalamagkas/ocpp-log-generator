@@ -8,7 +8,7 @@ import json
 ONLINE_MODE = False
 
 # PCAP_FILES is needed only if operating in offline mode (i.e., ONLINE_MODE = False)
-PCAP_FILES = ["RemoteStartTransaction.pcap"]
+PCAP_FILES = ["20220901_OCPP_Normal_Operation_Mixed.pcap"]
 
 #### LOGGING CONFIGURATION ###################
 class TimestampFilter(logging.Filter):
@@ -61,7 +61,10 @@ def analysePacketOCPP(packet):
                 i = i+1
 
             unmasked = bytearray(unmasked)
-            unmasked = bytearray.decode(unmasked)
+            try:
+                unmasked = bytearray.decode(unmasked)
+            except UnicodeDecodeError:
+                return False
         else:
             if (payload[1] & 127) == 126:
                 n = 4
@@ -70,7 +73,10 @@ def analysePacketOCPP(packet):
             else:
                 n = 2
             unmasked = payload[n:]
-            unmasked = unmasked.decode()
+            try:
+                unmasked = unmasked.decode()
+            except UnicodeDecodeError:
+                return False 
         
         unmasked = json.loads(unmasked)
         return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
@@ -82,10 +88,8 @@ class FileSink(Sink):
     def push(self, msg):
         if msg == False or msg == 'False':
           return 
-          # print("False, skipping...")
         else:
             LOGGER.info(msg)
-            # "IP_SRC=" + msg["src_ip"] + " " + "IP_DST=" + msg["dst_ip"] + " MSG=" + msg["msg"]
 
 if __name__ == "__main__":
     if ONLINE_MODE:
@@ -99,8 +103,7 @@ if __name__ == "__main__":
 
     else:
         for pcap in PCAP_FILES:
-            packets = rdpcap("./pcaps/" + pcap)
-            BASE_TIMESTAMP = time.time()
+            packets = PcapReader("./pcaps/" + pcap)
             for packet in packets:
                 if packet.haslayer("TCP"):
                     result = analysePacketOCPP(packet)
