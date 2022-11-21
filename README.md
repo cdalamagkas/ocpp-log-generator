@@ -9,3 +9,19 @@ There are two modes supported:
 Regardless of the mode, the output logs are generated in the `./output-logs` directory (relevant to the `logGenerator.py` location).
 
 Any input pcaps for the offline mode should be placed in the `./pcaps` directory (relevant to the `logGenerator.py` location).
+
+The OCPP Log Generator must be configured by creating a file named `config.ini` with the following structure:
+
+```ini
+[Settings]
+
+OperationMode=OFFLINE
+#OperationMode=ONLINE
+OfflineFiles=monitor.pcap
+CaptureInterface=eth1
+```
+
+- `OperationMode` can be specified as either `OFFLINE` or `ONLINE`.
+- If `OperationMode=OFFLINE`, then `OfflineFiles` must also be specified.
+- One or multiple filenames can be assigned to `OfflineFiles`, separated by comma. For example, `OfflineFiles=monitor.pcap` or `OfflineFiles=monitor1.pcap,monitor2.pcap`.
+- `CaptureInterface` specified the interface used for capturing packets (only in online mode). 
