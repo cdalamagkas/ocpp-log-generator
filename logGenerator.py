@@ -64,16 +64,17 @@ def analysePacketOCPP(packet):
         elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text), 137 to \x89 (ping), 138 to \x8a (pong)
             unmasked = []
             if payload[1] & 128 == 128:  # if mask bit is set
-                if (payload[1] & 127) == 126: # if extended payload is set
+                if (payload[1] & 127) == 126: # if payload length is 126, then extended payload header length is 2 bytes
                     
                     mask = [payload[4], payload[5], payload[6], payload[7]]
 
                     extended_payload_length = int.from_bytes(bytearray(list([payload[2], payload[3]])), byteorder='big')
-                    
-                    if extended_payload_length > 1400:  # check whether the size of payload exceeds the maximum TCP payload 
+                    websocket_header_length = 8
+
+                    if extended_payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
                         # This means that we expect a second websocket packet!
                         Fragmentation["Flag"] = True
-                        Fragmentation["Buffer"] = payload[8:]
+                        Fragmentation["Buffer"] = payload[websocket_header_length:]
                         Fragmentation["SrcIP"] = packet.payload.src
                         Fragmentation["SrcPort"] = packet.payload.payload.sport
                         Fragmentation["DstIP"] = packet.payload.dst
@@ -81,13 +82,12 @@ def analysePacketOCPP(packet):
                         Fragmentation["Masked"] = True
                         Fragmentation["Mask"] = mask
 
-                        return False
-                    else:
-                        websocket_header_length = 8
-                elif (payload[1] & 127) == 127:
-                    mask = [payload[4], payload[5], payload[6], payload[7]]
-                    websocket_header_length = 8
-                else:
+                        return False                        
+
+                elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
+                    mask = [payload[10], payload[11], payload[12], payload[13]]
+                    websocket_header_length = 14
+                else:  # if payload length is normal and mask is set 
                     mask = [payload[2], payload[3], payload[4], payload[5]]
                     websocket_header_length = 6
                 
@@ -96,11 +96,11 @@ def analysePacketOCPP(packet):
                     unmasked = bytearray.decode(unmasked)
                 except UnicodeDecodeError:
                     return False
-            else:
-                if (payload[1] & 127) == 126:
+            else:  # if unmasked
+                if (payload[1] & 127) == 126:  # if payload length is 126, then extended payload header length is 2 bytes 
                     websocket_header_length = 4
-                elif (payload[1] & 127) == 127:
-                    websocket_header_length = 4
+                elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
+                    websocket_header_length = 10
                 else:
                     websocket_header_length = 2
                 unmasked = payload[websocket_header_length:]
@@ -116,18 +116,12 @@ def analysePacketOCPP(packet):
             return False
 
     elif Fragmentation["SrcIP"] == packet.payload.src and Fragmentation["SrcPort"] == packet.payload.payload.sport and Fragmentation["DstIP"] == packet.payload.dst and Fragmentation["DstPort"] == packet.payload.payload.dport:
-
         Fragmentation["Flag"] = False
-
         payload = Fragmentation["Buffer"] + payload
-
         if Fragmentation["Masked"]:
             unmasked = unmask(payload, Fragmentation["Mask"], 0)
-
         unmasked = json.loads(unmasked)
-
         return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
-
     else:
         return False
 
@@ -139,6 +133,7 @@ class FileSink(Sink):
         else:
             result = msg
             LOGGER.info(msg=result, extra={'timestamp': datetime.now().timestamp()})
+
 
 if __name__ == "__main__":
 
