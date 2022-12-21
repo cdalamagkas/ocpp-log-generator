@@ -1,9 +1,10 @@
 from scapy.all import *
-from datetime import date, datetime
+from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import json
 import configparser
+from pathlib import Path
 
 
 #### LOGGING CONFIGURATION ###################
@@ -62,8 +63,8 @@ def analysePacketOCPP(packet):
             return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "ping"})
         elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text), 137 to \x89 (ping), 138 to \x8a (pong)
             unmasked = []
-            if payload[1] & 128 == 128:  # Check if mask bit is set
-                if (payload[1] & 127) == 126: # check if extended payload is set
+            if payload[1] & 128 == 128:  # if mask bit is set
+                if (payload[1] & 127) == 126: # if extended payload is set
                     
                     mask = [payload[4], payload[5], payload[6], payload[7]]
 
@@ -82,27 +83,27 @@ def analysePacketOCPP(packet):
 
                         return False
                     else:
-                        n = 8
+                        websocket_header_length = 8
                 elif (payload[1] & 127) == 127:
                     mask = [payload[4], payload[5], payload[6], payload[7]]
-                    n = 8
+                    websocket_header_length = 8
                 else:
                     mask = [payload[2], payload[3], payload[4], payload[5]]
-                    n = 6
+                    websocket_header_length = 6
                 
-                unmasked = unmask(payload, mask, n)
+                unmasked = unmask(payload, mask, websocket_header_length)
                 try:
                     unmasked = bytearray.decode(unmasked)
                 except UnicodeDecodeError:
                     return False
             else:
                 if (payload[1] & 127) == 126:
-                    n = 4
+                    websocket_header_length = 4
                 elif (payload[1] & 127) == 127:
-                    n = 4
+                    websocket_header_length = 4
                 else:
-                    n = 2
-                unmasked = payload[n:]
+                    websocket_header_length = 2
+                unmasked = payload[websocket_header_length:]
                 try:
                     unmasked = unmasked.decode()
                 except UnicodeDecodeError:
@@ -145,6 +146,9 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read('config.ini')
     OPERATION_MODE = config["Settings"]["OperationMode"]
+
+    Path("ocpp-logs").touch()
+    Path("pcaps").touch()
 
     if OPERATION_MODE == "ONLINE":
         source = SniffSource(iface=config["Settings"]["CaptureInterface"], filter="tcp")
