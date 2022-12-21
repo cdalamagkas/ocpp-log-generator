@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 import json
 import configparser
 from pathlib import Path
+import math
 
 
 #### LOGGING CONFIGURATION ###################
@@ -28,8 +29,9 @@ LOGGER.addHandler(handler)
 
 # FRAGMENTATION
 Fragmentation = {
-    "Buffer": None,
-    "Flag": False,
+    "Fragments": [],
+    "More_Fragments": False,
+    "Total_Fragments": 0,
     "SrcIP": None,
     "SrcPort": None,
     "DstIP": None,
@@ -56,12 +58,12 @@ def analysePacketOCPP(packet):
         #print("Packet has no payload. Lets continue...")
         return False
 
-    if not Fragmentation["Flag"]:
+    if not Fragmentation["More_Fragments"]:
         if payload[0] == 138:  # corresponds to \x8a (pong)
             return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "pong"})
         elif payload[0] == 137: # corresponds to \x89 (ping)
             return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "ping"})
-        elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text), 137 to \x89 (ping), 138 to \x8a (pong)
+        elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text)
             unmasked = []
             if payload[1] & 128 == 128:  # if mask bit is set
                 if (payload[1] & 127) == 126: # if payload length is 126, then extended payload header length is 2 bytes
@@ -72,9 +74,11 @@ def analysePacketOCPP(packet):
                     websocket_header_length = 8
 
                     if extended_payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
-                        # This means that we expect a second websocket packet!
-                        Fragmentation["Flag"] = True
-                        Fragmentation["Buffer"] = payload[websocket_header_length:]
+                        # This means that we expect more websocket packets!
+
+                        Fragmentation["More_Fragments"] = True
+                        Fragmentation["Fragments"].append(payload[websocket_header_length:])
+                        Fragmentation["Total_Fragments"] = math.ceil(extended_payload_length/1400)
                         Fragmentation["SrcIP"] = packet.payload.src
                         Fragmentation["SrcPort"] = packet.payload.payload.sport
                         Fragmentation["DstIP"] = packet.payload.dst
@@ -115,13 +119,21 @@ def analysePacketOCPP(packet):
         else: # some other packet
             return False
 
+    # This is to ascertain whether we are now in a fragmented packet (however, the best way to do this is to calculate its expected seq number) 
     elif Fragmentation["SrcIP"] == packet.payload.src and Fragmentation["SrcPort"] == packet.payload.payload.sport and Fragmentation["DstIP"] == packet.payload.dst and Fragmentation["DstPort"] == packet.payload.payload.dport:
-        Fragmentation["Flag"] = False
-        payload = Fragmentation["Buffer"] + payload
-        if Fragmentation["Masked"]:
-            unmasked = unmask(payload, Fragmentation["Mask"], 0)
-        unmasked = json.loads(unmasked)
-        return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
+        
+        Fragmentation["Fragments"].append(payload)
+
+        if len(Fragmentation["Fragments"]) == Fragmentation["Total_Fragments"]:  # Check if we collected all fragmented packets
+            Fragmentation["More_Fragments"] = False
+            assembled_payload = b''.join(Fragmentation["Fragments"])
+            if Fragmentation["Masked"]:
+                unmasked = unmask(assembled_payload, Fragmentation["Mask"], 0)
+            else:
+                unmasked = assembled_payload
+                
+            unmasked = json.loads(unmasked)
+            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
     else:
         return False
 
