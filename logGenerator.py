@@ -127,6 +127,7 @@ def analysePacketOCPP(packet):
         if len(Fragmentation["Fragments"]) == Fragmentation["Total_Fragments"]:  # Check if we collected all fragmented packets
             Fragmentation["More_Fragments"] = False
             assembled_payload = b''.join(Fragmentation["Fragments"])
+            Fragmentation["Fragments"] = []  # reset Fragments list
             if Fragmentation["Masked"]:
                 unmasked = unmask(assembled_payload, Fragmentation["Mask"], 0)
             else:
