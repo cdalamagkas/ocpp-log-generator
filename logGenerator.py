@@ -52,7 +52,7 @@ def unmask(payload, mask):
 
 
 # Returns header length (i.e., how many bytes does the header consume) and payload length
-def websocket_headerLength_and_payloadLength(payload):
+def websocket_header_properties(payload):
     mask = None
     if payload[1] & 128 == 128:  # if mask bit is set
         if (payload[1] & 127) == 126: # if payload length is 126, then extended payload header length is 2 bytes
@@ -78,7 +78,7 @@ def websocket_headerLength_and_payloadLength(payload):
             payload_length = int.from_bytes(bytearray(list([payload[2], payload[3],  payload[4], payload[5], payload[6], payload[7], payload[8], payload[9]])), byteorder='big')
             header_length = 10
         else:
-            payload_length = int.from_bytes(bytearray(list([payload[1] & 127])), byteorder='big')
+            payload_length = int.from_bytes(bytearray(list([payload[1]])), byteorder='big')
             header_length = 2
 
     return header_length, payload_length, mask
@@ -101,11 +101,10 @@ def analysePacketOCPP(packet):
             Websocket_Messages = []
             while True:
                 unmasked = []
-                header_length, payload_length, mask = websocket_headerLength_and_payloadLength(payload)
+                header_length, payload_length, mask = websocket_header_properties(payload)
 
                 if payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
                     # This means that we expect more websocket packets!
-
                     Fragmentation["More_Fragments"] = True
                     Fragmentation["Fragments"].append(payload[header_length:])
                     Fragmentation["Total_Fragments"] = math.ceil(payload_length/1400)
@@ -113,8 +112,11 @@ def analysePacketOCPP(packet):
                     Fragmentation["SrcPort"] = packet.payload.payload.sport
                     Fragmentation["DstIP"] = packet.payload.dst
                     Fragmentation["DstPort"] = packet.payload.payload.dport
-                    Fragmentation["Masked"] = True
-                    Fragmentation["Mask"] = mask
+                    if mask is not None:
+                        Fragmentation["Masked"] = True
+                        Fragmentation["Mask"] = mask
+                    else:
+                        Fragmentation["Masked"] = False
 
                     return False
 
