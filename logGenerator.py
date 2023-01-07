@@ -133,6 +133,7 @@ def analysePacketOCPP(packet):
                         print("Unicode decode error!")
                         return False 
 
+                unmasked = json.loads(unmasked)
                 Websocket_Messages.append(unmasked)
                 
                 # If there are more websockets to be parsed in the same packet
@@ -153,12 +154,12 @@ def analysePacketOCPP(packet):
             assembled_payload = b''.join(Fragmentation["Fragments"])
             Fragmentation["Fragments"] = []  # reset Fragments list
             if Fragmentation["Masked"]:
-                unmasked = unmask(assembled_payload, Fragmentation["Mask"], 0)
+                unmasked = unmask(assembled_payload, Fragmentation["Mask"])
             else:
                 unmasked = assembled_payload
                 
             unmasked = json.loads(unmasked)
-            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
+            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": [unmasked]})
     else:
         return False
 
@@ -179,7 +180,7 @@ if __name__ == "__main__":
     config.read('config.ini')
     OPERATION_MODE = config["Settings"]["OperationMode"]
 
-    Path("ocpp-logs").touch()
+    Path("output-logs").touch()
     Path("pcaps").touch()
 
     if OPERATION_MODE == "ONLINE":
