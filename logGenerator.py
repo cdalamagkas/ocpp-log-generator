@@ -40,15 +40,49 @@ Fragmentation = {
 }
 
 
-def unmask(payload, mask, offset):
+def unmask(payload, mask):
     unmasked = []
     i = 0
-    for byte in payload[offset:]:
+    for byte in payload:
         byte_unmasked = byte ^ mask[ i % 4 ]
         unmasked.append(byte_unmasked)
         i = i+1
     unmasked = bytearray(unmasked)
     return unmasked
+
+
+# Returns header length (i.e., how many bytes does the header consume) and payload length
+def websocket_header_properties(payload):
+    mask = None
+    if payload[1] & 128 == 128:  # if mask bit is set
+        if (payload[1] & 127) == 126: # if payload length is 126, then extended payload header length is 2 bytes
+            payload_length = int.from_bytes(bytearray(list([payload[2], payload[3]])), byteorder='big')
+            header_length = 8
+            mask = [payload[4], payload[5], payload[6], payload[7]]
+
+        elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
+            payload_length = int.from_bytes(bytearray(list([payload[2], payload[3],  payload[4], payload[5], payload[6], payload[7], payload[8], payload[9]])), byteorder='big')
+            header_length = 14
+            mask = [payload[10], payload[11], payload[12], payload[13]]
+
+        else:  # if payload length is normal and mask is set
+            payload_length = int.from_bytes(bytearray(list([payload[1] & 127])), byteorder='big')
+            header_length = 6
+            mask = [payload[2], payload[3], payload[4], payload[5]]
+
+    else: # if mask is not set
+        if (payload[1] & 127) == 126:  # if payload length is 126, then extended payload header length is 2 bytes 
+            payload_length = int.from_bytes(bytearray(list([payload[2], payload[3]])), byteorder='big')
+            header_length = 4
+        elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
+            payload_length = int.from_bytes(bytearray(list([payload[2], payload[3],  payload[4], payload[5], payload[6], payload[7], payload[8], payload[9]])), byteorder='big')
+            header_length = 10
+        else:
+            payload_length = int.from_bytes(bytearray(list([payload[1]])), byteorder='big')
+            header_length = 2
+
+    return header_length, payload_length, mask
+
 
 
 def analysePacketOCPP(packet):
@@ -64,58 +98,51 @@ def analysePacketOCPP(packet):
         elif payload[0] == 137: # corresponds to \x89 (ping)
             return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "ping"})
         elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text)
-            unmasked = []
-            if payload[1] & 128 == 128:  # if mask bit is set
-                if (payload[1] & 127) == 126: # if payload length is 126, then extended payload header length is 2 bytes
-                    
-                    mask = [payload[4], payload[5], payload[6], payload[7]]
+            Websocket_Messages = []
+            while True:
+                unmasked = []
+                header_length, payload_length, mask = websocket_header_properties(payload)
 
-                    extended_payload_length = int.from_bytes(bytearray(list([payload[2], payload[3]])), byteorder='big')
-                    websocket_header_length = 8
-
-                    if extended_payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
-                        # This means that we expect more websocket packets!
-
-                        Fragmentation["More_Fragments"] = True
-                        Fragmentation["Fragments"].append(payload[websocket_header_length:])
-                        Fragmentation["Total_Fragments"] = math.ceil(extended_payload_length/1400)
-                        Fragmentation["SrcIP"] = packet.payload.src
-                        Fragmentation["SrcPort"] = packet.payload.payload.sport
-                        Fragmentation["DstIP"] = packet.payload.dst
-                        Fragmentation["DstPort"] = packet.payload.payload.dport
+                if payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
+                    # This means that we expect more websocket packets!
+                    Fragmentation["More_Fragments"] = True
+                    Fragmentation["Fragments"].append(payload[header_length:])
+                    Fragmentation["Total_Fragments"] = math.ceil(payload_length/1400)
+                    Fragmentation["SrcIP"] = packet.payload.src
+                    Fragmentation["SrcPort"] = packet.payload.payload.sport
+                    Fragmentation["DstIP"] = packet.payload.dst
+                    Fragmentation["DstPort"] = packet.payload.payload.dport
+                    if mask is not None:
                         Fragmentation["Masked"] = True
                         Fragmentation["Mask"] = mask
+                    else:
+                        Fragmentation["Masked"] = False
 
-                        return False                        
-
-                elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
-                    mask = [payload[10], payload[11], payload[12], payload[13]]
-                    websocket_header_length = 14
-                else:  # if payload length is normal and mask is set 
-                    mask = [payload[2], payload[3], payload[4], payload[5]]
-                    websocket_header_length = 6
-                
-                unmasked = unmask(payload, mask, websocket_header_length)
-                try:
-                    unmasked = bytearray.decode(unmasked)
-                except UnicodeDecodeError:
                     return False
-            else:  # if unmasked
-                if (payload[1] & 127) == 126:  # if payload length is 126, then extended payload header length is 2 bytes 
-                    websocket_header_length = 4
-                elif (payload[1] & 127) == 127:  # if payload length is 127, then extended payload header length is 8 bytes
-                    websocket_header_length = 10
-                else:
-                    websocket_header_length = 2
-                unmasked = payload[websocket_header_length:]
-                try:
-                    unmasked = unmasked.decode()
-                except UnicodeDecodeError:
-                    return False 
-            
-            unmasked = json.loads(unmasked)
-            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
 
+                if mask is not None:
+                    unmasked = unmask(payload[header_length:header_length+payload_length], mask)
+                    try:
+                        unmasked = bytearray.decode(unmasked)
+                    except UnicodeDecodeError:
+                        print("Unicode decode error!")
+                        return False
+                else:  # if unmasked
+                    unmasked = payload[header_length:]
+                    try:
+                        unmasked = unmasked.decode()
+                    except UnicodeDecodeError:
+                        print("Unicode decode error!")
+                        return False 
+
+                unmasked = json.loads(unmasked)
+                Websocket_Messages.append(unmasked)
+                
+                # If there are more websockets to be parsed in the same packet
+                if len(payload[header_length+payload_length:]) > 0: 
+                    payload = payload[header_length+payload_length:]
+                else:
+                    return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": Websocket_Messages})
         else: # some other packet
             return False
 
@@ -129,12 +156,12 @@ def analysePacketOCPP(packet):
             assembled_payload = b''.join(Fragmentation["Fragments"])
             Fragmentation["Fragments"] = []  # reset Fragments list
             if Fragmentation["Masked"]:
-                unmasked = unmask(assembled_payload, Fragmentation["Mask"], 0)
+                unmasked = unmask(assembled_payload, Fragmentation["Mask"])
             else:
                 unmasked = assembled_payload
                 
             unmasked = json.loads(unmasked)
-            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": unmasked})
+            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": [unmasked]})
     else:
         return False
 
@@ -155,7 +182,7 @@ if __name__ == "__main__":
     config.read('config.ini')
     OPERATION_MODE = config["Settings"]["OperationMode"]
 
-    Path("ocpp-logs").touch()
+    Path("output-logs").touch()
     Path("pcaps").touch()
 
     if OPERATION_MODE == "ONLINE":
