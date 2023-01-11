@@ -4,28 +4,15 @@ import logging
 from logging.handlers import RotatingFileHandler
 import json
 import configparser
-from pathlib import Path
 import math
 
 
-#### LOGGING CONFIGURATION ###################
 class TimestampFilter(logging.Filter):
     def filter(self, record):
         if hasattr(record, 'timestamp'):
             record.created = record.timestamp
         return True
 
-LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
-FORMAT = '%(asctime)s.%(msecs)03dZ %(message)s'
-DATEFMT = '%Y-%m-%dT%H:%M:%S'
-formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
-logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
-LOGGER = logging.getLogger("Rotating Log")
-filter = TimestampFilter()
-LOGGER.addFilter(filter)
-handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
-handler.setFormatter(formatter)
-LOGGER.addHandler(handler)
 
 # FRAGMENTATION
 Fragmentation = {
@@ -82,7 +69,6 @@ def websocket_header_properties(payload):
             header_length = 2
 
     return header_length, payload_length, mask
-
 
 
 def analysePacketOCPP(packet):
@@ -182,8 +168,24 @@ if __name__ == "__main__":
     config.read('config.ini')
     OPERATION_MODE = config["Settings"]["OperationMode"]
 
-    Path("output-logs").touch()
-    Path("pcaps").touch()
+    if not os.path.isdir("output-logs"):
+        os.makedirs("output-logs")
+
+    if not os.path.isdir("pcaps"):
+        os.makedirs("pcaps")
+
+    # LOGGING CONFIGURATION ###################
+    LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
+    FORMAT = '%(asctime)s.%(msecs)03dZ %(message)s'
+    DATEFMT = '%Y-%m-%dT%H:%M:%S'
+    formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
+    logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
+    LOGGER = logging.getLogger("Rotating Log")
+    filter = TimestampFilter()
+    LOGGER.addFilter(filter)
+    handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
+    handler.setFormatter(formatter)
+    LOGGER.addHandler(handler)
 
     if OPERATION_MODE == "ONLINE":
         source = SniffSource(iface=config["Settings"]["CaptureInterface"], filter="tcp")
