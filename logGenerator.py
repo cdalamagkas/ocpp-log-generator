@@ -133,7 +133,7 @@ def analysePacketOCPP(packet):
             return False
 
     # This is to ascertain whether we are now in a fragmented packet (however, the best way to do this is to calculate its expected seq number) 
-    elif Fragmentation["SrcIP"] == packet.payload.src and Fragmentation["SrcPort"] == packet.payload.payload.sport and Fragmentation["DstIP"] == packet.payload.dst and Fragmentation["DstPort"] == packet.payload.payload.dport:
+    elif Fragmentation["SrcIP"] == packet["IP"].src and Fragmentation["SrcPort"] == packet["IP"]["TCP"].sport and Fragmentation["DstIP"] == packet["IP"].dst and Fragmentation["DstPort"] == packet["IP"]["TCP"].dport:
         
         Fragmentation["Fragments"].append(payload)
 
