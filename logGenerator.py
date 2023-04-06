@@ -197,7 +197,7 @@ if __name__ == "__main__":
         p.wait_and_stop()
 
     elif OPERATION_MODE == "OFFLINE":
-        PCAP_FILES = config["Settings"]["OfflineFiles"].split(",")
+        PCAP_FILES = config["Settings"]["OfflineFiles"].split(";")
 
         for pcap in PCAP_FILES:
             packets = PcapReader("./pcaps/" + pcap)

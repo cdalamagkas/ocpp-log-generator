@@ -23,5 +23,5 @@ CaptureInterface=eth1
 
 - `OperationMode` can be specified as either `OFFLINE` or `ONLINE`.
 - If `OperationMode=OFFLINE`, then `OfflineFiles` must also be specified.
-- One or multiple filenames can be assigned to `OfflineFiles`, separated by comma. For example, `OfflineFiles=monitor.pcap` or `OfflineFiles=monitor1.pcap,monitor2.pcap`.
+- One or multiple filenames can be assigned to `OfflineFiles`, separated by semicolon. For example, `OfflineFiles=monitor.pcap` or `OfflineFiles=monitor1.pcap;monitor2.pcap`.
 - `CaptureInterface` specified the interface used for capturing packets (only in online mode). 
