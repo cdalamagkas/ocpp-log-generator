@@ -2,3 +2,4 @@ venv
 pcaps/*
 output-logs/*
 *.ini
+__pycache__
