@@ -1,16 +1,18 @@
-from scapy.all import *
+import scapy.all as scapy_all
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import json
 import configparser
 import math
+from os import listdir
+from os.path import isfile, join
 
 
 class TimestampFilter(logging.Filter):
     def filter(self, record):
         if hasattr(record, 'timestamp'):
-            record.created = record.timestamp
+            record.created = record.timestamp  # type: ignore
         return True
 
 
@@ -78,6 +80,9 @@ def analysePacketOCPP(packet):
         #print("Packet has no payload. Lets continue...")
         return False
 
+    if len(payload) == 0:
+        return
+
     if not Fragmentation["More_Fragments"]:
         if payload[0] == 138:  # corresponds to \x8a (pong)
             return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "pong"})
@@ -91,6 +96,7 @@ def analysePacketOCPP(packet):
 
                 if payload_length > 1400:  # if payload size exceeds the maximum TCP payload 
                     # This means that we expect more websocket packets!
+                    packet.show()
                     Fragmentation["More_Fragments"] = True
                     Fragmentation["Fragments"].append(payload[header_length:])
                     Fragmentation["Total_Fragments"] = math.ceil(payload_length/1400)
@@ -121,9 +127,12 @@ def analysePacketOCPP(packet):
                         print("Unicode decode error!")
                         return False 
 
-                unmasked = json.loads(unmasked)
-                Websocket_Messages.append(unmasked)
-                
+                try:
+                    unmasked = json.loads(unmasked)
+                    Websocket_Messages.append(unmasked)
+                except json.decoder.JSONDecodeError:
+                    return False
+
                 # If there are more websockets to be parsed in the same packet
                 if len(payload[header_length+payload_length:]) > 0: 
                     payload = payload[header_length+payload_length:]
@@ -145,14 +154,20 @@ def analysePacketOCPP(packet):
                 unmasked = unmask(assembled_payload, Fragmentation["Mask"])
             else:
                 unmasked = assembled_payload
-                
-            unmasked = json.loads(unmasked)
+
+            try:    
+                unmasked = json.loads(unmasked)
+            except:
+                print("Decoding error on fragmented packet")
+                print(unmasked)
+                return False
+
             return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": [unmasked]})
     else:
         return False
 
 
-class FileSink(Sink):
+class FileSink(scapy_all.Sink):
     def push(self, msg):
         if msg == False or msg == 'False':
           return 
@@ -168,39 +183,50 @@ if __name__ == "__main__":
     config.read('config.ini')
     OPERATION_MODE = config["Settings"]["OperationMode"]
 
-    if not os.path.isdir("output-logs"):
-        os.makedirs("output-logs")
+    if not scapy_all.os.path.isdir("output-logs"):
+        scapy_all.os.makedirs("output-logs")
 
-    if not os.path.isdir("pcaps"):
-        os.makedirs("pcaps")
+    if not scapy_all.os.path.isdir("pcaps"):
+        scapy_all.os.makedirs("pcaps")
 
     # LOGGING CONFIGURATION ###################
-    LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
     FORMAT = '%(asctime)s.%(msecs)03dZ %(message)s'
     DATEFMT = '%Y-%m-%dT%H:%M:%S'
     formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
     logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
-    LOGGER = logging.getLogger("Rotating Log")
     filter = TimestampFilter()
-    LOGGER.addFilter(filter)
-    handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
-    handler.setFormatter(formatter)
-    LOGGER.addHandler(handler)
-
+    
+    
     if OPERATION_MODE == "ONLINE":
-        source = SniffSource(iface=config["Settings"]["CaptureInterface"], filter="tcp")
+        LOGGER = logging.getLogger("Online Logger")
+        LOGGER.addFilter(filter)
+        LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
+        handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
+        handler.setFormatter(formatter)
+        LOGGER.addHandler(handler)
+
+        source = scapy_all.SniffSource(iface=config["Settings"]["CaptureInterface"], filter="tcp")
         filesink = FileSink()
-        source > TransformDrain(analysePacketOCPP) > filesink
-        p = PipeEngine()
+        source > scapy_all.TransformDrain(analysePacketOCPP) > filesink
+        p = scapy_all.PipeEngine()
         p.add(source)
         p.start()
         p.wait_and_stop()
 
     elif OPERATION_MODE == "OFFLINE":
         PCAP_FILES = config["Settings"]["OfflineFiles"].split(";")
+        if "*" in PCAP_FILES:
+            PCAP_FILES = [f for f in listdir("./pcaps") if isfile(join("./pcaps", f))]
 
         for pcap in PCAP_FILES:
-            packets = PcapReader("./pcaps/" + pcap)
+            LOGGER = logging.getLogger(pcap)
+            LOGGER.addFilter(filter)
+            LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs_" + pcap.split(".")[0] + ".json"
+            handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
+            handler.setFormatter(formatter)
+            LOGGER.addHandler(handler)
+
+            packets = scapy_all.PcapReader("./pcaps/" + pcap)
             for packet in packets:
                 if packet.haslayer("TCP"):
                     result = analysePacketOCPP(packet)
