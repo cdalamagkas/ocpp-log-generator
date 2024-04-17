@@ -7,6 +7,50 @@ import configparser
 import math
 from os import listdir
 from os.path import isfile, join
+from kafka import KafkaProducer
+#from kafka.admin import KafkaAdminClient, NewTopic
+#from kafka.errors import KafkaError
+import traceback
+import sys
+
+
+class KafkaLoggingHandler(logging.Handler):
+
+    def __init__(self, host, port, topic, tls=False, ca=None, cert=None, key=None, password=None):
+        logging.Handler.__init__(self)
+        if tls:
+            self.producer = KafkaProducer(
+                bootstrap_servers='[{0}:{1}]'.format(host, int(port)),
+                security_protocol='SSL',
+                ssl_check_hostname=False,
+                ssl_cafile=ca,
+                ssl_certfile=cert,
+                ssl_keyfile=key,
+                ssl_password=password
+            )
+        else:
+            self.producer = KafkaProducer(bootstrap_servers='[{0}:{1}]'.format(host, int(port)))
+
+        self.topic = topic
+
+    def emit(self, record):
+        #drop kafka logging to avoid infinite recursion
+        if record.name == 'kafka':
+            return
+        try:
+            #use default formatting
+            #msg = self.format(record)
+            #produce message
+            self.producer.send(self.topic, record)
+            self.producer.flush()
+        except:            
+            ei = sys.exc_info()
+            traceback.print_exception(ei[0], ei[1], ei[2], None, sys.stderr)
+            del ei
+
+    def close(self):
+        self.producer.close()
+        logging.Handler.close(self)
 
 
 class TimestampFilter(logging.Filter):
@@ -198,12 +242,37 @@ if __name__ == "__main__":
     
     
     if OPERATION_MODE == "ONLINE":
+
+        KAFKA_MODE = int(config["Settings"]["OnlineKafkaMode"])
+
+        if KAFKA_MODE:
+            KAFKA_HOST = config["Settings"]["OnlineKafkaMode_Host"]
+            KAFKA_PORT = config["Settings"]["OnlineKafkaMode_Port"]
+            KAFKA_TOPIC = config["Settings"]["OnlineKafkaMode_Topic"]
+
+            KAFKA_TLS= int(config["Settings"]["OnlineKafkaMode_TLS"])
+            
+            if KAFKA_TLS:
+                KAFKA_CA = config["Settings"]["OnlineKafkaMode_CA"]
+                KAFKA_CERT = config["Settings"]["OnlineKafkaMode_Cert"]
+                KAFKA_KEY = config["Settings"]["OnlineKafkaMode_Key"]
+                KAFKA_PASS = config["Settings"]["OnlineKafkaMode_Password"]
+
         LOGGER = logging.getLogger("Online Logger")
         LOGGER.addFilter(filter)
+
         LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
         handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
         handler.setFormatter(formatter)
         LOGGER.addHandler(handler)
+
+        if KAFKA_MODE:
+            if KAFKA_TLS:
+                handler = KafkaLoggingHandler(host=KAFKA_HOST, port=KAFKA_PORT, topic=KAFKA_TOPIC, tls=False)
+            else:
+                handler = KafkaLoggingHandler(host=KAFKA_HOST, port=KAFKA_PORT, topic=KAFKA_TOPIC, tls=True, ca=KAFKA_CA, cert=KAFKA_CERT, key=KAFKA_KEY, password=KAFKA_PASS)
+            handler.setFormatter(formatter)
+            LOGGER.addHandler(handler)
 
         source = scapy_all.SniffSource(iface=config["Settings"]["CaptureInterface"], filter="tcp")
         filesink = FileSink()

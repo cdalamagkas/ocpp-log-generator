@@ -3,3 +3,4 @@ pcaps/*
 output-logs/*
 *.ini
 __pycache__
+kafka_certs/*
