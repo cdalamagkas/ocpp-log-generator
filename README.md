@@ -10,30 +10,33 @@ Regardless of the mode, the output logs are generated in the `./output-logs` dir
 
 Any input pcaps for the offline mode should be placed in the `./pcaps` directory (relevant to the `logGenerator.py` location).
 
-The OCPP Log Generator must be configured by creating a file named `config.ini` with the following structure:
+The OCPP Log Generator must be configured by creating a file named `config.json` with the following structure:
 
-```ini
-[Settings]
-
-OperationMode=OFFLINE
-OfflineFiles=monitor.pcap
-
-#OperationMode=ONLINE
-CaptureInterface=eth1
-OnlineKafkaMode=0
-OnlineKafkaMode_Host=X.X.X.X
-OnlineKafkaMode_Port=9092
-OnlineKafkaMode_Topic=XXX
-OnlineKafkaMode_TLS=0
-OnlineKafkaMode_CA=./kafka_certs/CA.pem
-OnlineKafkaMode_Cert=./kafka_certs/cert.pem
-OnlineKafkaMode_Key=./kafka_certs/key.pem
-OnlineKafkaMode_Password=XXX
+```json
+{
+    "General": {
+        "OPERATION_MODE": "ONLINE",
+        "ONLINE_CAPTURE_INTERFACE": "ens19",
+        "OFFLINE_PCAP_FILES": [],
+        "OUTPUT_KAFKA": true
+    },
+    "Kafka": {
+        "KAFKA_HOST": "***",
+        "KAFKA_PORT": 9092,
+        "KAFKA_TOPIC": "UC1.ocpploggenerator.logs",
+        "KAFKA_SECURITY": "SASL_PLAINTEXT",
+	    "KAFKA_SASL_USERNAME": "***",
+	    "KAFKA_SASL_PASSWORD": "***",
+        "KAFKA_CA": "./kafka_certs/CA.pem",
+        "KAFKA_CERT": "./kafka_certs/cert.pem",
+        "KAFKA_KEY": "./kafka_certs/key.pem",
+        "KAFKA_PASSWORD": "***"
+    }
+}
 ```
 
-- `OperationMode` can be specified as either `OFFLINE` or `ONLINE`.
-- If `OperationMode=OFFLINE`, then `OfflineFiles` must also be specified.
-- One or multiple filenames can be assigned to `OfflineFiles`, separated by semicolon. For example, `OfflineFiles=monitor.pcap` or `OfflineFiles=monitor1.pcap;monitor2.pcap`.
-- `CaptureInterface` specifies the interface used for capturing packets (only in online mode). 
-- `OnlineKafkaMode` can be used to activate the sending of each log line to a Kafka server (only available in online mode).
-- `OnlineKafkaMode_*` variables must be used to configure the Kafka connection. If SSL is activated by setting `OnlineKafkaMode_TLS=1`, then the CA, cert, key and password parameters must be set.
+- `OPERATION_MODE` can be specified as either `OFFLINE` or `ONLINE`.
+- If `OPERATION_MODE` is `OFFLINE`, then `OFFLINE_PCAP_FILES` must also be specified.
+- One or multiple filenames can be specified in the `OFFLINE_PCAP_FILES` list. For example, `"OFFLINE_PCAP_FILES": [monitor.pcap]` or `"OFFLINE_PCAP_FILES": [monitor1.pcap, monitor2.pcap]`.
+- `ONLINE_CAPTURE_INTERFACE` specifies the interface used for capturing packets (only in online mode). 
+- `OUTPUT_KAFKA` can be used to activate the sending of each log line to a Kafka server (only available in online mode).

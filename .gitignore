@@ -4,3 +4,4 @@ output-logs/*
 *.ini
 __pycache__
 kafka_certs/*
+config.json
