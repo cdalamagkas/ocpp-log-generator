@@ -16,12 +16,24 @@ The OCPP Log Generator must be configured by creating a file named `config.ini` 
 [Settings]
 
 OperationMode=OFFLINE
-#OperationMode=ONLINE
 OfflineFiles=monitor.pcap
+
+#OperationMode=ONLINE
 CaptureInterface=eth1
+OnlineKafkaMode=0
+OnlineKafkaMode_Host=X.X.X.X
+OnlineKafkaMode_Port=9092
+OnlineKafkaMode_Topic=XXX
+OnlineKafkaMode_TLS=0
+OnlineKafkaMode_CA=./kafka_certs/CA.pem
+OnlineKafkaMode_Cert=./kafka_certs/cert.pem
+OnlineKafkaMode_Key=./kafka_certs/key.pem
+OnlineKafkaMode_Password=XXX
 ```
 
 - `OperationMode` can be specified as either `OFFLINE` or `ONLINE`.
 - If `OperationMode=OFFLINE`, then `OfflineFiles` must also be specified.
 - One or multiple filenames can be assigned to `OfflineFiles`, separated by semicolon. For example, `OfflineFiles=monitor.pcap` or `OfflineFiles=monitor1.pcap;monitor2.pcap`.
-- `CaptureInterface` specified the interface used for capturing packets (only in online mode). 
+- `CaptureInterface` specifies the interface used for capturing packets (only in online mode). 
+- `OnlineKafkaMode` can be used to activate the sending of each log line to a Kafka server (only available in online mode).
+- `OnlineKafkaMode_*` variables must be used to configure the Kafka connection. If SSL is activated by setting `OnlineKafkaMode_TLS=1`, then the CA, cert, key and password parameters must be set.
