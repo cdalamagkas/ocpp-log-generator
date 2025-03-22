@@ -18,19 +18,26 @@ The OCPP Log Generator must be configured by creating a file named `config.json`
         "OPERATION_MODE": "ONLINE",
         "ONLINE_CAPTURE_INTERFACE": "ens19",
         "OFFLINE_PCAP_FILES": [],
-        "OUTPUT_KAFKA": true
+        "OUTPUT_MODULES": ["LOGSTASH_HTTP", "KAFKA"]
     },
-    "Kafka": {
+    "KAFKA": {
         "KAFKA_HOST": "***",
         "KAFKA_PORT": 9092,
         "KAFKA_TOPIC": "UC1.ocpploggenerator.logs",
         "KAFKA_SECURITY": "SASL_PLAINTEXT",
 	    "KAFKA_SASL_USERNAME": "***",
 	    "KAFKA_SASL_PASSWORD": "***",
-        "KAFKA_CA": "./kafka_certs/CA.pem",
-        "KAFKA_CERT": "./kafka_certs/cert.pem",
-        "KAFKA_KEY": "./kafka_certs/key.pem",
+        "KAFKA_CA": "./certs/CA.pem",
+        "KAFKA_CERT": "./certs/cert.pem",
+        "KAFKA_KEY": "./certs/key.pem",
         "KAFKA_PASSWORD": "***"
+    },
+    "LOGSTASH_HTTP": {
+        "HOST": "192.168.21.45",
+        "PORT": 5958,
+        "USERNAME": "***",
+        "PASSWORD": "***",
+        "CA_CERT": "./certs/ca.crt"
     }
 }
 ```
@@ -39,4 +46,4 @@ The OCPP Log Generator must be configured by creating a file named `config.json`
 - If `OPERATION_MODE` is `OFFLINE`, then `OFFLINE_PCAP_FILES` must also be specified.
 - One or multiple filenames can be specified in the `OFFLINE_PCAP_FILES` list. For example, `"OFFLINE_PCAP_FILES": [monitor.pcap]` or `"OFFLINE_PCAP_FILES": [monitor1.pcap, monitor2.pcap]`.
 - `ONLINE_CAPTURE_INTERFACE` specifies the interface used for capturing packets (only in online mode). 
-- `OUTPUT_KAFKA` can be used to activate the sending of each log line to a Kafka server (only available in online mode).
+- `OUTPUT_MODULES` can be used to activate the sending of each log line to one or multiple output modules (only available in online mode).

@@ -5,3 +5,5 @@ output-logs/*
 __pycache__
 kafka_certs/*
 config.json
+certs
+*.db

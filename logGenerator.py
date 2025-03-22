@@ -3,15 +3,14 @@ from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import json
-import configparser
 import math
 from os import listdir
 from os.path import isfile, join
 from kafka import KafkaProducer
-#from kafka.admin import KafkaAdminClient, NewTopic
-#from kafka.errors import KafkaError
 import traceback
 import sys
+from logstash_async.handler import AsynchronousLogstashHandler, LogstashFormatter
+from logging import Formatter
 
 
 class KafkaLoggingHandler(logging.Handler):
@@ -60,13 +59,6 @@ class KafkaLoggingHandler(logging.Handler):
     def close(self):
         self.producer.close()
         logging.Handler.close(self)
-
-
-class TimestampFilter(logging.Filter):
-    def filter(self, record):
-        if hasattr(record, 'timestamp'):
-            record.created = record.timestamp  # type: ignore
-        return True
 
 
 # FRAGMENTATION
@@ -126,6 +118,10 @@ def websocket_header_properties(payload):
     return header_length, payload_length, mask
 
 
+def emit_message(src_ip, dst_ip, msg):
+    return json.dumps({"timestamp": datetime.now().isoformat(), "src_ip": src_ip, "dst_ip": dst_ip,"msg": msg})
+
+
 def analysePacketOCPP(packet):
     try:
         payload = packet["IP"]["TCP"].payload.load
@@ -138,9 +134,9 @@ def analysePacketOCPP(packet):
 
     if not Fragmentation["More_Fragments"]:
         if payload[0] == 138:  # corresponds to \x8a (pong)
-            return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "pong"})
+            return emit_message(src_ip=packet["IP"].src, dst_ip=packet["IP"].dst, msg="pong")
         elif payload[0] == 137: # corresponds to \x89 (ping)
-            return  json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": "ping"})
+            return emit_message(src_ip=packet["IP"].src, dst_ip=packet["IP"].dst, msg="ping")
         elif payload[0] == 129:  # 129 corresponds to \x81 (opcode=text)
             Websocket_Messages = []
             while True:
@@ -190,7 +186,7 @@ def analysePacketOCPP(packet):
                 if len(payload[header_length+payload_length:]) > 0: 
                     payload = payload[header_length+payload_length:]
                 else:
-                    return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": Websocket_Messages})
+                    return emit_message(src_ip=packet["IP"].src, dst_ip=packet["IP"].dst, msg=Websocket_Messages)
         else: # some other packet
             return False
 
@@ -215,7 +211,7 @@ def analysePacketOCPP(packet):
                 print(unmasked)
                 return False
 
-            return json.dumps({"src_ip": packet["IP"].src, "dst_ip": packet["IP"].dst,"msg": [unmasked]})
+            return emit_message(src_ip=packet["IP"].src, dst_ip=packet["IP"].dst, msg=[unmasked])
     else:
         return False
 
@@ -225,8 +221,7 @@ class FileSink(scapy_all.Sink):
         if msg == False or msg == 'False':
           return 
         else:
-            result = msg
-            LOGGER.info(msg=result, extra={'timestamp': datetime.now().timestamp()})
+            LOGGER.info(msg)
 
 
 if __name__ == "__main__":
@@ -242,27 +237,32 @@ if __name__ == "__main__":
     if not scapy_all.os.path.isdir("pcaps"):
         scapy_all.os.makedirs("pcaps")
 
-    # LOGGING CONFIGURATION ###################
-    FORMAT = '%(asctime)s.%(msecs)03dZ %(message)s'
-    DATEFMT = '%Y-%m-%dT%H:%M:%S'
-    formatter = logging.Formatter(fmt=FORMAT, datefmt=DATEFMT)
-    logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt=DATEFMT)
-    filter = TimestampFilter()
-    
-    
     if config["General"]["OPERATION_MODE"] == "ONLINE":
 
-        LOGGER = logging.getLogger("Online Logger")
-        LOGGER.addFilter(filter)
+        LOGGER = logging.getLogger("ocpp-log-generator")
+        LOGGER.setLevel(logging.INFO)
+
+        LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 
         LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs.json"
-        handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
-        handler.setFormatter(formatter)
-        LOGGER.addHandler(handler)
+        LOGGER.addHandler(RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5))
 
-        if config["General"]["OUTPUT_KAFKA"]:
-            handler = KafkaLoggingHandler(config=config["Kafka"])
-            handler.setFormatter(formatter)
+        if "KAFKA" in config["General"]["OUTPUT_MODULES"]:
+            LOGGER.addHandler(KafkaLoggingHandler(config=config["Kafka"])) 
+
+        if "LOGSTASH_HTTP" in config["General"]["OUTPUT_MODULES"]:
+            handler = AsynchronousLogstashHandler(
+                host = config["LOGSTASH_HTTP"]["HOST"],
+                port = config["LOGSTASH_HTTP"]["PORT"],
+                transport = 'logstash_async.transport.HttpTransport',
+                database_path='logstash.db',
+                ssl_enable = True,
+                ssl_verify = False,
+                ca_certs = config["LOGSTASH_HTTP"]["CA_CERT"],
+                username = config["LOGSTASH_HTTP"]["USERNAME"],
+                password = config["LOGSTASH_HTTP"]["PASSWORD"]
+            )
+            handler.setFormatter(LogstashFormatter())
             LOGGER.addHandler(handler)
 
         source = scapy_all.SniffSource(iface=config["General"]["ONLINE_CAPTURE_INTERFACE"], filter="tcp")
@@ -273,6 +273,7 @@ if __name__ == "__main__":
         p.start()
         p.wait_and_stop()
 
+    
     elif config["General"]["OPERATION_MODE"] == "OFFLINE":
         PCAP_FILES = config["General"]["OFFLINE_PCAP_FILES"]
         if "*" in PCAP_FILES:
@@ -280,10 +281,8 @@ if __name__ == "__main__":
 
         for pcap in PCAP_FILES:
             LOGGER = logging.getLogger(pcap)
-            LOGGER.addFilter(filter)
             LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs_" + pcap.split(".")[0] + ".json"
             handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
-            handler.setFormatter(formatter)
             LOGGER.addHandler(handler)
 
             packets = scapy_all.PcapReader("./pcaps/" + pcap)
@@ -294,3 +293,4 @@ if __name__ == "__main__":
                         continue
                     else:
                         LOGGER.info(msg=result, extra={'timestamp': int(packet.time)})
+    
