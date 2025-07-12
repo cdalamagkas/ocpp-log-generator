@@ -276,7 +276,7 @@ if __name__ == "__main__":
     
     elif config["General"]["OPERATION_MODE"] == "OFFLINE":
         PCAP_FILES = config["General"]["OFFLINE_PCAP_FILES"]
-        if "*" in PCAP_FILES:
+        if len(PCAP_FILES) == 0:
             PCAP_FILES = [f for f in listdir("./pcaps") if isfile(join("./pcaps", f))]
 
         for pcap in PCAP_FILES:

@@ -44,6 +44,6 @@ The OCPP Log Generator must be configured by creating a file named `config.json`
 
 - `OPERATION_MODE` can be specified as either `OFFLINE` or `ONLINE`.
 - If `OPERATION_MODE` is `OFFLINE`, then `OFFLINE_PCAP_FILES` must also be specified.
-- One or multiple filenames can be specified in the `OFFLINE_PCAP_FILES` list. For example, `"OFFLINE_PCAP_FILES": [monitor.pcap]` or `"OFFLINE_PCAP_FILES": [monitor1.pcap, monitor2.pcap]`.
+- One or multiple filenames can be specified in the `OFFLINE_PCAP_FILES` list. For example, `"OFFLINE_PCAP_FILES": [monitor.pcap]` or `"OFFLINE_PCAP_FILES": [monitor1.pcap, monitor2.pcap]`. Leave this empty in order to read all files inside the `pcap` folder.
 - `ONLINE_CAPTURE_INTERFACE` specifies the interface used for capturing packets (only in online mode). 
 - `OUTPUT_MODULES` can be used to activate the sending of each log line to one or multiple output modules (only available in online mode).
