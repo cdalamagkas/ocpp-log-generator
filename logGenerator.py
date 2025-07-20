@@ -237,10 +237,10 @@ if __name__ == "__main__":
     if not scapy_all.os.path.isdir("pcaps"):
         scapy_all.os.makedirs("pcaps")
 
-    if config["General"]["OPERATION_MODE"] == "ONLINE":
+    LOGGER = logging.getLogger("ocpp-log-generator")
+    LOGGER.setLevel(logging.INFO)
 
-        LOGGER = logging.getLogger("ocpp-log-generator")
-        LOGGER.setLevel(logging.INFO)
+    if config["General"]["OPERATION_MODE"] == "ONLINE":
 
         LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 
@@ -280,7 +280,6 @@ if __name__ == "__main__":
             PCAP_FILES = [f for f in listdir("./pcaps") if isfile(join("./pcaps", f))]
 
         for pcap in PCAP_FILES:
-            LOGGER = logging.getLogger(pcap)
             LOG_FILENAME = datetime.now().strftime("%Y%m%d-%H%M%S") + "_ocppLogs_" + pcap.split(".")[0] + ".json"
             handler = RotatingFileHandler("./output-logs/" + LOG_FILENAME, maxBytes=15728640, backupCount=5)
             LOGGER.addHandler(handler)
